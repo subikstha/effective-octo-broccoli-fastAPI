@@ -1,8 +1,9 @@
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, HTTPException, Response, status
-from sqlmodel import Session, select
+from sqlmodel import Session
 
+from . import crud
 from .database import get_session
 from .models import Project, ProjectCreate, ProjectRead, ProjectUpdate
 
@@ -49,62 +50,44 @@ and serializes them to JSON
 
 @app.get("/projects", response_model=list[ProjectRead])
 def list_projects(session: SessionDep):
-    statement = select(Project).order_by(Project.name)
-    projects = session.exec(statement).all()  # Execute this statement
-    # if session.exec(statement).one() is used and no result is found , it will throw an exception
-    # or throw an exception if more than one result is found
-    return list(projects)  # Ensuring that a list is returned
+    return crud.list_projects(session)
 
 
 @app.post(
-    "/projects", response_model=ProjectRead, status_code=status.HTTP_201_CREATED
+    "/projects", response_model=Project, status_code=status.HTTP_201_CREATED
 )
 def create_project(payload: ProjectCreate, session: SessionDep):
-    project = Project.model_validate(
-        payload, update={"slug": slugify(payload.name)}
-    )  # Creates project model instance from ProjectCreate payload
-    # update is used to inject additional fields in the payload that is not originally there
-
-    session.add(project)
-    session.commit()
-    session.refresh(project)  # Doing this we get the PK set in the DB
-
-    return project
+    return crud.create_project(payload=payload, session=session)
 
 
 @app.patch("/projects/{project_id}", response_model=ProjectRead)
 def update_project(
-    project_id: int, payload: ProjectCreate, session: SessionDep
+    project_id: int, payload: ProjectUpdate, session: SessionDep
 ):
-    project = session.get(Project, project_id)
+    project = crud.get_project_by_id(session, project_id)
     if not project:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Project not foun"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
-    updated_fields = project.model_dump(
-        exclude_unset=True
-    )  # Only get those fields which have been changed
-    project.sqlmodel_update(
-        updated_fields
-    )  # update the project with new fields and make sure it is validated
+    return crud.update_project(session, project, payload)
 
-    if "name" in updated_fields and updated_fields["name"] is not None:
-        project.slug = slugify(updated_fields["name"])
 
-    session.add(project)
-    session.commit()
-    session.refresh(project)
-
+@app.get("/projects/{project_id}", status_code=status.HTTP_200_OK)
+def get_project_by_id(project_id: int, session: SessionDep):
+    project = crud.get_project_by_id(session, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
     return project
 
 
 @app.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(project_id: int, session: SessionDep):
-    project = session.get(Project, project_id)
+    project = crud.get_project_by_id(session, project_id)
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
         )
-    session.delete(project)
-    session.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+    return crud.delete_project(session, project)
