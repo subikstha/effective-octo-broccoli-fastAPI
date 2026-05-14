@@ -1,10 +1,7 @@
-from typing import Annotated
-
-from fastapi import Depends, FastAPI, HTTPException, Response, status
-from sqlmodel import Session
+from fastapi import FastAPI, HTTPException, status
 
 from . import crud
-from .database import get_session
+from .dependencies import SessionDep
 from .models import Project, ProjectCreate, ProjectRead, ProjectUpdate
 
 
@@ -18,6 +15,12 @@ app = FastAPI(
     description="An API for tracking project milestones and tasks for devs",
 )
 
+
+@app.get("/")
+def read_root() -> dict[str, str]:
+    return {"app": "Release Tracker", "docs": "/docs"}
+
+
 """
 Creates a reusable FastAPI dependency alias
 This packages database session coming from get_session() into a SessionDep name
@@ -25,9 +28,6 @@ Whenever you see SessionDep, FastAPI should inject a database session using get_
 Replaces this
 def get_projects(session: Session = Depends(get_session)):
 """
-SessionDep = Annotated[
-    Session, Depends(get_session)
-]  # Means everytime you need the Session use the get_session()
 
 
 @app.get("/projects/{project_id}", response_model=ProjectRead)
